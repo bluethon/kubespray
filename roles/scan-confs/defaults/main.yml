@@ -1,0 +1,3 @@
+---
+etcd_ip: "{{ ansible_host }}"
+vm_name: "{{ inventory_hostname }}"

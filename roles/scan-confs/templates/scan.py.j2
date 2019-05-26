@@ -1,0 +1,12 @@
+from pathlib import Path
+import etcd3
+
+p = Path('/etc')
+etcd = etcd3.client(host="{{ etcd_ip }}")
+
+conf_files = p.glob('**/*.conf')
+
+for file in conf_files:
+    if file.is_file():
+        key = "{{ vm_name }}_" + str(file)
+        etcd.put(str(file), file.read_text())

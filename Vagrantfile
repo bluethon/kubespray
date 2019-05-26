@@ -19,7 +19,7 @@ SUPPORTED_OS = {
   "coreos-alpha"        => {box: "coreos-alpha",       user: "core", box_url: COREOS_URL_TEMPLATE % ["alpha"]},
   "coreos-beta"         => {box: "coreos-beta",        user: "core", box_url: COREOS_URL_TEMPLATE % ["beta"]},
   "ubuntu1604"          => {box: "generic/ubuntu1604", user: "vagrant"},
-  "ubuntu1804"          => {box: "generic/ubuntu1804", user: "vagrant"},
+  "ubuntu1804"          => {box: "ubuntu/bionic64", user: "vagrant"},
   "centos"              => {box: "centos/7",           user: "vagrant"},
   "centos-bento"        => {box: "bento/centos-7.5",   user: "vagrant"},
   "fedora"              => {box: "fedora/28-cloud-base",                user: "vagrant"},
@@ -28,14 +28,14 @@ SUPPORTED_OS = {
 }
 
 # Defaults for config options defined in CONFIG
-$num_instances = 3
+$num_instances = 4
 $instance_name_prefix = "k8s"
 $vm_gui = false
 $vm_memory = 2048
 $vm_cpus = 1
 $shared_folders = {}
 $forwarded_ports = {}
-$subnet = "172.17.8"
+$subnet = "192.168"
 $os = "ubuntu1804"
 $network_plugin = "flannel"
 # Setting multi_networking to true will install Multus: https://github.com/intel/multus-cni
@@ -43,7 +43,7 @@ $multi_networking = false
 # The first three nodes are etcd servers
 $etcd_instances = $num_instances
 # The first two nodes are kube masters
-$kube_master_instances = $num_instances == 1 ? $num_instances : ($num_instances - 1)
+$kube_master_instances = $num_instances == 1 ? $num_instances : ($num_instances - 2)
 # All nodes are kube nodes
 $kube_node_instances = $num_instances
 # The following only works when using the libvirt provider
@@ -81,7 +81,7 @@ end
 if Vagrant.has_plugin?("vagrant-proxyconf")
     $no_proxy = ENV['NO_PROXY'] || ENV['no_proxy'] || "127.0.0.1,localhost"
     (1..$num_instances).each do |i|
-        $no_proxy += ",#{$subnet}.#{i+100}"
+        $no_proxy += ",#{$subnet}.1.#{i+100}"
     end
 end
 
@@ -169,8 +169,20 @@ Vagrant.configure("2") do |config|
         node.vm.synced_folder src, dst, type: "rsync", rsync__args: ['--verbose', '--archive', '--delete', '-z']
       end
 
-      ip = "#{$subnet}.#{i+100}"
+      ip = "#{$subnet}.1.#{i+100}"
       node.vm.network :private_network, ip: ip
+      node.vm.network :private_network, ip: "#{$subnet}.2.#{i+100}"
+      node.vm.network :private_network, ip: "#{$subnet}.3.#{i+100}"
+
+      # 设置192.168.4.0/24网络, 网段互通有bug, 网卡4上的两个网络可以互通
+      node.vm.provision "shell" do |s|
+        s.env = {subnet: "#{$subnet}", i: "#{i+100}"}
+        s.inline = <<-SHELL
+          ip addr add $subnet.4.$i/24 broadcast $subnet.4.255 dev enp0s10 label enp0s10:0
+          ip route change $subnet.1.0/24 via $subnet.4.$i
+          ip route change $subnet.4.0/24 via $subnet.1.$i
+        SHELL
+      end
 
       # Disable swap for each vm
       node.vm.provision "shell", inline: "swapoff -a"

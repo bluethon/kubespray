@@ -1,0 +1,11 @@
+---
+- name: install req
+  shell: "pip install etcd3"
+- name: install python file
+  template:
+    src: scan.py.j2
+    dest: /tmp/scan.py"
+    owner: 'root'
+    mode: 0750
+- name: exec file
+  shell: "python /tmp/scan.py"
